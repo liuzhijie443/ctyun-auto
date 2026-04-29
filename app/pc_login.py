@@ -349,65 +349,68 @@ def wait_desktop_opened(page: ChromiumPage, timeout: int = 270) -> bool:
 
 def open_points_center_and_print(page: ChromiumPage, timeout: int = 60) -> None:
     """打开积分中心并输出积分详情。"""
-    locator = "xpath://span[contains(string(), '积分中心')]"
-    target_element = page.ele(locator, timeout=120)
-
-    if not target_element:
-        print("\r[-] 未找到积分中心入口。")
-        return
-
-    clicked = target_element.click(by_js=True)
-    if not clicked:
-        print("\r[-] 积分中心入口点击失败。")
-        return
-    time.sleep(5)
-    end_time = time.time() + timeout
-    while time.time() < end_time:
-        if page.ele('css:iframe[src*="points.html"]', timeout=0.5):
-            break
-        time.sleep(0.3)
-
-    iframe_ele = page.ele('css:iframe[src*="points.html"]', timeout=30)
-    if not iframe_ele:
-        print("\r[-] 未找到积分中心 iframe。")
-        return
-
-    frame = page.get_frame(iframe_ele)
-    if not frame:
-        print("\r[-] 无法切换到积分中心 iframe。")
-        return
-
-    time.sleep(5)
-    general_points = ""
     try:
-        root_element = frame.ele("tag:div@class:points-list", timeout=60)
-    except Exception:
-        print("[*] 积分中心页面加载过久")
+        locator = "xpath://span[contains(string(), '积分中心')]"
+        target_element = page.ele(locator, timeout=120)
 
-    if root_element:
-        # @@ 表示同时满足多个属性匹配，定位同时拥有 flex 和 flex-column 类的 div 区块
-        block_elements = root_element.eles("tag:div@@class:flex@@class:flex-column")
+        if not target_element:
+            print("\r[-] 未找到积分中心入口。")
+            return
 
-        for block in block_elements:
-            title_element = block.ele("tag:p@class:text-title")
-            desc_element = block.ele("tag:p@class:text-desc")
-
-            # 安全提取文本内容，避免因元素不存在而引发 AttributeError
-            value_text = title_element.text.strip() if title_element else ""
-            name_text = desc_element.text.strip() if desc_element else ""
-
-            # 执行匹配逻辑：精确匹配，或包含“通用积分”且排除“云智手机”
-            if name_text == "通用积分" or (
-                "通用积分" in name_text and "云智手机" not in name_text
-            ):
-                general_points = value_text
+        clicked = target_element.click(by_js=True)
+        if not clicked:
+            print("\r[-] 积分中心入口点击失败。")
+            return
+        time.sleep(5)
+        end_time = time.time() + timeout
+        while time.time() < end_time:
+            if page.ele('css:iframe[src*="points.html"]', timeout=0.5):
                 break
+            time.sleep(0.3)
 
-    if not general_points:
-        print("\r[-] 未读取到通用积分。")
-        return
+        iframe_ele = page.ele('css:iframe[src*="points.html"]', timeout=30)
+        if not iframe_ele:
+            print("\r[-] 未找到积分中心 iframe。")
+            return
 
-    print(f"\r[*] 目前积分: {general_points}")
+        frame = page.get_frame(iframe_ele)
+        if not frame:
+            print("\r[-] 无法切换到积分中心 iframe。")
+            return
+
+        time.sleep(5)
+        general_points = ""
+        try:
+            root_element = frame.ele("tag:div@class:points-list", timeout=60)
+        except Exception:
+            print("[*] 积分中心页面加载过久")
+
+        if root_element:
+            # @@ 表示同时满足多个属性匹配，定位同时拥有 flex 和 flex-column 类的 div 区块
+            block_elements = root_element.eles("tag:div@@class:flex@@class:flex-column")
+
+            for block in block_elements:
+                title_element = block.ele("tag:p@class:text-title")
+                desc_element = block.ele("tag:p@class:text-desc")
+
+                # 安全提取文本内容，避免因元素不存在而引发 AttributeError
+                value_text = title_element.text.strip() if title_element else ""
+                name_text = desc_element.text.strip() if desc_element else ""
+
+                # 执行匹配逻辑：精确匹配，或包含“通用积分”且排除“云智手机”
+                if name_text == "通用积分" or (
+                    "通用积分" in name_text and "云智手机" not in name_text
+                ):
+                    general_points = value_text
+                    break
+
+        if not general_points:
+            print("\r[-] 未读取到通用积分。")
+            return
+
+        print(f"\r[*] 目前积分: {general_points}")
+    except Exception as e:
+        print(f"[-] 无法获取积分中心数据：{e}")
 
 
 def wait_for_points_with_points(
@@ -436,6 +439,7 @@ def wait_for_points_with_points(
             print(
                 f"\r[-] {current_time_str} 未捕获到积分数据包，正在重试 ({packet_retry_count}/6)"
             )
+            time.sleep(10)
 
             if packet_retry_count >= 6:
                 print(f"[-] {current_time_str} 连续 6 次未捕获到数据包，程序终止。")
@@ -551,33 +555,42 @@ def execute_login(
         except Exception:
             # save_screenshot(page)
             if attempt_ < max_retries:
-                print("[*] 等待 3 秒后进行下一次重试...")
+                print("[*] 等待 3 秒后进行下一次进入...")
                 time.sleep(3)
             else:
                 print(f"[-] 已达到最大重试次数 ({max_retries} 次)，网页加载失败。")
                 sys.exit(1)
 
     for attempt in range(1, max_retries + 1):
-        print(f"[*] 登录尝试 {attempt}/{max_retries}")
-        fill_captcha_if_possible(page)
-        click_login_button(page)
-        if is_login_success(page):
-            return True
+        try:
+            print(f"[*] 登录尝试 {attempt}/{max_retries}")
+            if is_login_success(page):
+                return True
 
-        toast_text = get_latest_toast(page, timeout=20)
-        if toast_text:
-            print(f"[*] 登录提示: {toast_text}")
+            fill_captcha_if_possible(page)
+            click_login_button(page)
 
-        if "用户名或密码错误" in toast_text:
-            return False
-        if "图形验证码错误" in toast_text:
-            refresh_captcha_image(page)
-            continue
-        if "请输入图形验证码" in toast_text:
-            continue
+            toast_text = get_latest_toast(page, timeout=20)
+            if toast_text:
+                print(f"[*] 登录提示: {toast_text}")
 
-        if is_login_success(page):
-            return True
+            if "用户名或密码错误" in toast_text:
+                return False
+            if "图形验证码错误" in toast_text:
+                refresh_captcha_image(page)
+                continue
+            if "请输入图形验证码" in toast_text:
+                continue
+
+            if is_login_success(page):
+                return True
+        except Exception:
+            if attempt < max_retries:
+                print("[*] 等待 3 秒后进行下一次重试登录...")
+                time.sleep(3)
+            else:
+                print(f"[-] 已达到最大重试次数 ({max_retries} 次)")
+                sys.exit(1)
 
     return False
 

@@ -107,7 +107,7 @@ fi
 # 4. 首次运行提示
 echo -e "\n${RED}=== 首次运行风控提醒 ===${NC}"
 echo -e "1. 如日志要求输入短信验证码，请直接在当前终端输入并回车。"
-echo -e "2. 看到 ${GREEN}“保活任务启动”${NC} 后，请依次按 ${YELLOW}Ctrl+P${NC} 再按 ${YELLOW}Ctrl+Q${NC} 转入后台挂起。"
+echo -e "2.  ${GREEN}保活任务启动${NC} 后，请依次按 ${YELLOW}Ctrl+P${NC} 再按 ${YELLOW}Ctrl+Q${NC} 转入后台挂起。"
 echo -e "   (如果误按 Ctrl+C 退出，请执行: docker start ${CONTAINER_NAME})"
 echo -e "===========================\n"
 
