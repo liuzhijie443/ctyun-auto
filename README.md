@@ -19,7 +19,7 @@
 ## 项目结构
 
 ```text
-。
+.
 ├─ deploy.sh               # 交互式部署脚本（构建镜像、启动容器）
 └─ app/
    ├─ Dockerfile           # 运行环境构建与 cron 任务配置
@@ -61,6 +61,5 @@ docker logs -f ctyun_sign_<APP_USER>
 docker stop ctyun_sign_<APP_USER>
 docker start ctyun_sign_<APP_USER>
 ```
-
 
 验证码识别api方案来自 https://github.com/sml2h3/ddddocr
