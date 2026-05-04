@@ -20,14 +20,14 @@ AUTO_CONFIRM='false'
 print_usage() {
     cat <<'EOF'
 用法:
-  bash deploy_new.sh [账号] [密码] [挂机cron] [AI对话cron] [选项]
+  bash deploy_cron.sh [账号] [密码] [挂机cron] [AI对话cron] [选项]
 
 选项:
   -y, --yes                     跳过“按回车启动容器”确认
   -h, --help                    显示帮助
 
 示例:
-  bash deploy_new.sh 181xxxx '***' "0 4,6 * * *" "0 3,20 * * *" -y
+  bash deploy_cron.sh 181xxxx '***' "0 4,6 * * *" "0 3,20 * * *" -y
 
 参数顺序说明:
   1. 账号(APP_USER)

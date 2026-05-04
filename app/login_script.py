@@ -3,6 +3,7 @@
 """
 
 import atexit
+import datetime
 import json
 import os
 import random
@@ -138,13 +139,21 @@ def analyze_login_response(response_body: Union[dict, str, None]) -> int:
     return -1
 
 
+def save_screenshot(page: ChromiumPage) -> None:
+    file_name = f"{os.getenv('APP_USER')}_{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    if os.getenv("RUNNING_IN_DOCKER") == "true":
+        path = "/app/data"
+    else:
+        path = "./"
+    page.get_screenshot(path=path, name=file_name, full_page=True)
+
+
 def execute_login_with_listener(
     page: ChromiumPage,
     target_url: str,
     username: str,
     password: str,
-    max_retries: int = 3,
-) -> bool:
+) -> Optional[bool]:
     """执行完整的账号密码登录流程。"""
     print("\n--- 开始账密登录流程 ---")
     print(f"访问登录页面: {target_url}")
@@ -153,46 +162,39 @@ def execute_login_with_listener(
 
     fill_credentials(page, username, password)
 
-    for attempt in range(max_retries):
-        print(f"--- 登录尝试: {attempt + 1}/{max_retries} ---")
-        handle_captcha(page)
+    handle_captcha(page)
 
-        # 【修复点 1】：先判断元素是否渲染显示，返回的是 bool
-        if not page.wait.ele_displayed("css:button.lgm-submit-ct", timeout=5):
-            print("页面未渲染出登录按钮，退出流程。")
-            return False
+    if not page.wait.ele_displayed("css:button.lgm-submit-ct", timeout=5):
+        raise RuntimeError("页面未渲染出登录按钮")
 
-        # 确认显示后，重新提取元素对象
-        login_button = page.ele("css:button.lgm-submit-ct")
+    # 确认显示后，重新提取元素对象
+    login_button = page.ele("css:button.lgm-submit-ct")
 
-        page.listen.start("api/auth/iam/login")
-        login_button.click()
+    page.listen.start("api/auth/iam/login")
+    login_button.click()
 
-        print("已点击登录，等待接口返回...")
-        packet = page.listen.wait(timeout=5)
-        page.listen.stop()
+    print("已点击登录，等待接口返回...")
+    packet = page.listen.wait(timeout=5)
+    page.listen.stop()
 
-        if not packet:
-            print("未捕获到登录接口数据包，检查是否已重定向。")
-            return True
+    if not packet:
+        raise RuntimeError("未捕获到登录接口数据包，检查是否已重定向。")
 
-        status_code = analyze_login_response(packet.response.body)
+    status_code = analyze_login_response(packet.response.body)
 
-        if status_code == 0:
-            print("登录成功")
-            return True
-        elif status_code == 1:
-            print("登录失败：用户名或密码错误。")
-            return False
-        elif status_code in [2, 3]:
-            print(f"登录受阻（状态码 {status_code}），准备重试...")
-            time.sleep(1)
-            continue
-        else:
-            print(f"未知响应: {packet.response.body}")
-            return False
-
-    return False
+    if status_code == 0:
+        print("登录成功")
+        return True
+    elif status_code == 1:
+        print("登录失败：用户名或密码错误。")
+        return False
+    elif status_code in [2, 3]:
+        print(f"登录受阻（状态码 {status_code}），准备重试...")
+        time.sleep(1)
+        raise RuntimeError("登录受阻，准备重试。")
+    else:
+        print(f"未知响应: {packet.response.body}")
+        return False
 
 
 def display_user_info(page: ChromiumPage) -> None:
@@ -203,9 +205,12 @@ def display_user_info(page: ChromiumPage) -> None:
 
     if page.wait.ele_displayed(user_selector, timeout=5):
         username_text = page.ele(user_selector).text
-        print(f"[*] 登录成功，当前登录用户: {username_text}")
+        if username_text:
+            print(f"[*] 登录成功，当前登录用户: {username_text}")
+        else:
+            raise RuntimeError("未能获取到当前用户信息，可能页面未完全渲染。")
     else:
-        print("[-] 未能获取到当前用户信息，可能页面未完全渲染。")
+        raise RuntimeError("[-] 未能获取到当前用户信息，可能页面未完全渲染。")
 
 
 def chat_and_earn_points(page: ChromiumPage) -> None:
@@ -219,10 +224,8 @@ def chat_and_earn_points(page: ChromiumPage) -> None:
     print("等待聊天输入框加载...")
     input_selector = "css:div.input-box.input-wrap"
 
-    # 【修复点 2】：分离等待判断与元素获取（输入框）
     if not page.wait.ele_displayed(input_selector, timeout=10):
-        print("未找到聊天输入框，任务失败。")
-        return
+        raise RuntimeError("未找到聊天输入框")
 
     # 在确认核心页面元素加载完毕后，立刻提取并输出用户信息
     display_user_info(page)
@@ -250,7 +253,6 @@ def chat_and_earn_points(page: ChromiumPage) -> None:
             previous_text = ""
             stable_count = 0
 
-            # 检测文字变化，若连续 3 秒不变则视为回答完毕（最长等 60 秒）
             for _ in range(60):
                 current_text = latest_reply.text
                 if current_text and current_text == previous_text:
@@ -262,15 +264,16 @@ def chat_and_earn_points(page: ChromiumPage) -> None:
                 if stable_count >= 3:
                     break
                 time.sleep(1)
-
+            if latest_reply.text == "" or latest_reply.text is None:
+                raise RuntimeError("[!] 未得到回复。")
             print("=== AI 助手回复 ===")
             print(latest_reply.text)
             print("\n===================\n")
             print("[*] 积分任务完成。")
         else:
-            print("[!] 未能定位到助手的回复元素。")
+            raise RuntimeError("[!] 未能定位到助手的回复元素。")
     else:
-        print("[!] 未找到发送按钮。")
+        raise RuntimeError("[!] 未找到发送按钮。")
 
 
 # ==========================================
@@ -302,45 +305,54 @@ def main() -> None:
     browser_options = init_browser_options()
     page = ChromiumPage(addr_or_opts=browser_options)
     atexit.register(page.quit)
+    attempt = 0
+    max_retries = 3
+    while attempt < max_retries:
+        print(f"--- 对话尝试: {attempt + 1}/{max_retries} ---")
+        try:
+            is_logged_in = False
 
-    try:
-        is_logged_in = False
-
-        # === 使用动态路径进行持久化验证 ===
-        print(f"正在建立域名上下文环境，准备使用账号 {my_username} 的缓存...")
-        page.get(chat_url)
-        time.sleep(1)
-
-        if load_cookies(page, cookie_file):
-            print("正在验证 Cookie 是否有效...")
+            # === 使用动态路径进行持久化验证 ===
+            print(f"正在建立域名上下文环境，准备使用账号 {my_username} 的缓存...")
             page.get(chat_url)
-            if page.wait.ele_displayed("css:div.input-box.input-wrap", timeout=5):
-                print(f"[*] 账号 {my_username} 免密登录成功！")
-                is_logged_in = True
-            else:
-                print("[-] Cookie 已失效，准备进行账密登录...")
+            time.sleep(1)
 
-        # === 登录流程 (如果 Cookie 无效) ===
-        if not is_logged_in:
-            is_success = execute_login_with_listener(
-                page, login_url, my_username, my_password
-            )
-            if is_success:
-                # 登录成功后保存到对应手机号的文件中
-                time.sleep(5)
-                save_cookies(page, cookie_file)
-                is_logged_in = True
-            else:
-                print("[!] 自动化登录未能成功执行。")
+            if attempt <= 0:
+                if load_cookies(page, cookie_file):
+                    print("正在验证 Cookie 是否有效...")
+                    page.get(chat_url)
+                    if page.wait.ele_displayed(
+                        "css:div.input-box.input-wrap", timeout=5
+                    ):
+                        print(f"[*] 账号 {my_username} 免密登录成功！")
+                        is_logged_in = True
+                    else:
+                        print("[-] Cookie 已失效，准备进行账密登录...")
 
-        # === 执行互动获取积分 ===
-        if is_logged_in:
-            chat_and_earn_points(page)
-            print("\n所有任务已完成，10秒后安全退出程序...")
-            time.sleep(10)
+            # === 登录流程 (如果 Cookie 无效) ===
+            if not is_logged_in:
+                is_success = execute_login_with_listener(
+                    page, login_url, my_username, my_password
+                )
+                if is_success:
+                    # 登录成功后保存到对应手机号的文件中
+                    time.sleep(5)
+                    save_cookies(page, cookie_file)
+                    is_logged_in = True
+                else:
+                    print("[!] 自动化登录未能成功执行。")
+                    sys.exit(1)
 
-    except Exception as e:
-        print(f"[!] 执行过程中发生异常: {e}")
+            # === 执行互动获取积分 ===
+            if is_logged_in:
+                chat_and_earn_points(page)
+                print("\n对话任务已完成")
+            break
+
+        except Exception as e:
+            attempt += 1
+            print(f"[!] 执行过程中发生异常: {e}")
+            time.sleep(5)
 
 
 # ==========================================
